@@ -90,15 +90,30 @@ func TestTopK(t *testing.T) {
 		}
 	}
 
-	// gob
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(tk); err != nil {
+	// msgp
+	buf := bytes.NewBuffer(nil)
+	if err := tk.Encode(buf); err != nil {
 		t.Error(err)
 	}
 
 	decoded := New(100)
-	dec := gob.NewDecoder(&buf)
+	if err := decoded.Decode(buf); err != nil {
+		t.Error(err)
+	}
+
+	if !reflect.DeepEqual(tk, decoded) {
+		t.Error("they are not equal.")
+	}
+
+	// gob
+	buf = bytes.NewBuffer(nil)
+	enc := gob.NewEncoder(buf)
+	if err := enc.Encode(tk); err != nil {
+		t.Error(err)
+	}
+
+	decoded = New(100)
+	dec := gob.NewDecoder(buf)
 	if err := dec.Decode(decoded); err != nil {
 		t.Error(err)
 	}

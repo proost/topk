@@ -21,9 +21,11 @@ import (
 	"bytes"
 	"container/heap"
 	"encoding/gob"
+	"io"
 	"sort"
 
 	"github.com/dgryski/go-sip13"
+	"github.com/tinylib/msgp/msgp"
 )
 
 // Element is a TopK item
@@ -44,6 +46,80 @@ func (elts elementsByCountDescending) Swap(i, j int) { elts[i], elts[j] = elts[j
 type keys struct {
 	m    map[string]int
 	elts []Element
+}
+
+func (ks *keys) EncodeMsgp(w *msgp.Writer) error {
+	if err := w.WriteMapHeader(uint32(len(ks.m))); err != nil {
+		return err
+	}
+	for k, v := range ks.m {
+		if err := w.WriteString(k); err != nil {
+			return err
+		}
+		if err := w.WriteInt(v); err != nil {
+			return err
+		}
+	}
+
+	if err := w.WriteArrayHeader(uint32(len(ks.elts))); err != nil {
+		return err
+	}
+	for _, e := range ks.elts {
+		if err := w.WriteString(e.Key); err != nil {
+			return err
+		}
+		if err := w.WriteInt(e.Count); err != nil {
+			return err
+		}
+		if err := w.WriteInt(e.Error); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ks *keys) DecodeMsp(r *msgp.Reader) error {
+	var (
+		err error
+		sz  uint32
+	)
+
+	if sz, err = r.ReadMapHeader(); err != nil {
+		return err
+	}
+
+	ks.m = make(map[string]int, sz)
+
+	for i := uint32(0); i < sz; i++ {
+		key, err := r.ReadString()
+		if err != nil {
+			return err
+		}
+		val, err := r.ReadInt()
+		if err != nil {
+			return err
+		}
+		ks.m[key] = val
+	}
+
+	if sz, err = r.ReadArrayHeader(); err != nil {
+		return err
+	}
+
+	ks.elts = make([]Element, sz)
+	for i := range ks.elts {
+		if ks.elts[i].Key, err = r.ReadString(); err != nil {
+			return err
+		}
+		if ks.elts[i].Count, err = r.ReadInt(); err != nil {
+			return err
+		}
+		if ks.elts[i].Error, err = r.ReadInt(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Implement the container/heap interface
@@ -207,4 +283,63 @@ func (s *Stream) GobDecode(b []byte) error {
 		return err
 	}
 	return nil
+}
+
+// EncodeMsgp ...
+func (s *Stream) EncodeMsgp(w *msgp.Writer) error {
+	if err := w.WriteInt(s.n); err != nil {
+		return err
+	}
+
+	if err := w.WriteArrayHeader(uint32(len(s.alphas))); err != nil {
+		return err
+	}
+
+	for _, a := range s.alphas {
+		if err := w.WriteInt(a); err != nil {
+			return err
+		}
+	}
+
+	return s.k.EncodeMsgp(w)
+}
+
+// DecodeMsgp ...
+func (s *Stream) DecodeMsgp(r *msgp.Reader) error {
+	var (
+		err error
+		sz  uint32
+	)
+
+	if s.n, err = r.ReadInt(); err != nil {
+		return err
+	}
+
+	if sz, err = r.ReadArrayHeader(); err != nil {
+		return err
+	}
+
+	s.alphas = make([]int, sz)
+	for i := range s.alphas {
+		if s.alphas[i], err = r.ReadInt(); err != nil {
+			return err
+		}
+	}
+
+	return s.k.DecodeMsp(r)
+}
+
+// Encode ...
+func (s *Stream) Encode(w io.Writer) error {
+	wrt := msgp.NewWriter(w)
+	if err := s.EncodeMsgp(wrt); err != nil {
+		return err
+	}
+	return wrt.Flush()
+}
+
+// Decode ...
+func (s *Stream) Decode(r io.Reader) error {
+	rdr := msgp.NewReader(r)
+	return s.DecodeMsgp(rdr)
 }
