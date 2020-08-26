@@ -1,3 +1,6 @@
-go-topk: "filtered space saving" streaming topk algorithm
+topk: "filtered space saving" streaming topk algorithm
 
-godoc: http://godoc.org/github.com/dgryski/go-topk
+Forked from http://github.com/dgryski/go-topk with the following changes
+
+* [x] Add msgp encoding/decoding
+* [ ] Reduce memory comsumption
