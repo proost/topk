@@ -48,11 +48,11 @@ type keys struct {
 	elts []Element
 }
 
-func (ks *keys) EncodeMsgp(w *msgp.Writer) error {
-	if err := w.WriteMapHeader(uint32(len(ks.m))); err != nil {
+func (tk *keys) EncodeMsgp(w *msgp.Writer) error {
+	if err := w.WriteMapHeader(uint32(len(tk.m))); err != nil {
 		return err
 	}
-	for k, v := range ks.m {
+	for k, v := range tk.m {
 		if err := w.WriteString(k); err != nil {
 			return err
 		}
@@ -61,10 +61,10 @@ func (ks *keys) EncodeMsgp(w *msgp.Writer) error {
 		}
 	}
 
-	if err := w.WriteArrayHeader(uint32(len(ks.elts))); err != nil {
+	if err := w.WriteArrayHeader(uint32(len(tk.elts))); err != nil {
 		return err
 	}
-	for _, e := range ks.elts {
+	for _, e := range tk.elts {
 		if err := w.WriteString(e.Key); err != nil {
 			return err
 		}
@@ -78,7 +78,7 @@ func (ks *keys) EncodeMsgp(w *msgp.Writer) error {
 	return nil
 }
 
-func (ks *keys) DecodeMsp(r *msgp.Reader) error {
+func (tk *keys) DecodeMsp(r *msgp.Reader) error {
 	var (
 		err error
 		sz  uint32
@@ -88,7 +88,7 @@ func (ks *keys) DecodeMsp(r *msgp.Reader) error {
 		return err
 	}
 
-	ks.m = make(map[string]int, sz)
+	tk.m = make(map[string]int, sz)
 
 	for i := uint32(0); i < sz; i++ {
 		key, err := r.ReadString()
@@ -99,22 +99,22 @@ func (ks *keys) DecodeMsp(r *msgp.Reader) error {
 		if err != nil {
 			return err
 		}
-		ks.m[key] = val
+		tk.m[key] = val
 	}
 
 	if sz, err = r.ReadArrayHeader(); err != nil {
 		return err
 	}
 
-	ks.elts = make([]Element, sz)
-	for i := range ks.elts {
-		if ks.elts[i].Key, err = r.ReadString(); err != nil {
+	tk.elts = make([]Element, sz)
+	for i := range tk.elts {
+		if tk.elts[i].Key, err = r.ReadString(); err != nil {
 			return err
 		}
-		if ks.elts[i].Count, err = r.ReadInt(); err != nil {
+		if tk.elts[i].Count, err = r.ReadInt(); err != nil {
 			return err
 		}
-		if ks.elts[i].Error, err = r.ReadInt(); err != nil {
+		if tk.elts[i].Error, err = r.ReadInt(); err != nil {
 			return err
 		}
 	}
@@ -124,7 +124,10 @@ func (ks *keys) DecodeMsp(r *msgp.Reader) error {
 
 // Implement the container/heap interface
 
+// Len ...
 func (tk *keys) Len() int { return len(tk.elts) }
+
+// Less ...
 func (tk *keys) Less(i, j int) bool {
 	return (tk.elts[i].Count < tk.elts[j].Count) || (tk.elts[i].Count == tk.elts[j].Count && tk.elts[i].Error > tk.elts[j].Error)
 }
@@ -250,6 +253,7 @@ func (s *Stream) Estimate(x string) Element {
 	return e
 }
 
+// GobEncode ...
 func (s *Stream) GobEncode() ([]byte, error) {
 	buf := bytes.Buffer{}
 	enc := gob.NewEncoder(&buf)
@@ -268,6 +272,7 @@ func (s *Stream) GobEncode() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// GobDecode ...
 func (s *Stream) GobDecode(b []byte) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(b))
 	if err := dec.Decode(&s.n); err != nil {
