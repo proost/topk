@@ -5,4 +5,4 @@ A modified version of http://github.com/dgryski/go-topk with the following chang
 * [x] Add msgp encoding/decoding
 * [x] Use metro hash
 * [x] Allow merging via https://ieeexplore.ieee.org/document/8438445
-* [x] Buffer extra 2*n for a better results
+* [x] Buffer extra `2*n` for a better results
