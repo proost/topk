@@ -250,26 +250,28 @@ func (s *Stream) Merge(other *Stream) error {
 	for k := range eKeys {
 		idx1, ok1 := s.k.m[k]
 		idx2, ok2 := other.k.m[k]
-		e1 := s.k.elts[idx1]
-		e2 := other.k.elts[idx2]
 		xhash := reduce(metro.Hash64Str(k, 0), len(s.alphas))
 		min1 := other.alphas[xhash]
 		min2 := other.alphas[xhash]
 
 		switch {
 		case ok1 && ok2:
+			e1 := s.k.elts[idx1]
+			e2 := other.k.elts[idx2]
 			eMap[k] = Element{
 				Key:   k,
 				Count: e1.Count + e2.Count,
 				Error: e1.Error + e2.Error,
 			}
 		case ok1:
+			e1 := s.k.elts[idx1]
 			eMap[k] = Element{
 				Key:   k,
 				Count: e1.Count + min2,
 				Error: e1.Error + min2,
 			}
 		case ok2:
+			e2 := other.k.elts[idx2]
 			eMap[k] = Element{
 				Key:   k,
 				Count: e2.Count + min1,
@@ -314,7 +316,10 @@ func (s *Stream) Merge(other *Stream) error {
 func (s *Stream) Keys() []Element {
 	elts := append([]Element(nil), s.k.elts...)
 	sort.Sort(elementsByCountDescending(elts))
-	return elts[:s.n]
+	if len(elts) > s.n {
+		elts = elts[:s.n]
+	}
+	return elts
 }
 
 // Estimate returns an estimate for the item x
