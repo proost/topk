@@ -21,12 +21,15 @@ import (
 	"bytes"
 	"container/heap"
 	"encoding/gob"
+	"fmt"
 	"io"
 	"sort"
 
-	"github.com/dgryski/go-sip13"
+	"github.com/dgryski/go-metro"
 	"github.com/tinylib/msgp/msgp"
 )
+
+const bufMultiplier = 3 // keep track of extra 200% (tip of the iceberg)
 
 // Element is a TopK item
 type Element struct {
@@ -165,8 +168,8 @@ type Stream struct {
 func New(n int) *Stream {
 	return &Stream{
 		n:      n,
-		k:      keys{m: make(map[string]int), elts: make([]Element, 0, n)},
-		alphas: make([]int, n*6), // 6 is the multiplicative constant from the paper
+		k:      keys{m: make(map[string]int), elts: make([]Element, 0, n*bufMultiplier)},
+		alphas: make([]int, n*bufMultiplier*6), // 6 is the multiplicative constant from the paper
 	}
 }
 
@@ -178,7 +181,7 @@ func reduce(x uint64, n int) uint32 {
 // It returns an estimation for the just inserted element
 func (s *Stream) Insert(x string, count int) Element {
 
-	xhash := reduce(sip13.Sum64Str(0, 0, x), len(s.alphas))
+	xhash := reduce(metro.Hash64Str(x, 0), len(s.alphas))
 
 	// are we tracking this element?
 	if idx, ok := s.k.m[x]; ok {
@@ -189,7 +192,7 @@ func (s *Stream) Insert(x string, count int) Element {
 	}
 
 	// can we track more elements?
-	if len(s.k.elts) < s.n {
+	if len(s.k.elts) < s.n*bufMultiplier {
 		// there is free space
 		e := Element{Key: x, Count: count}
 		heap.Push(&s.k, e)
@@ -207,10 +210,10 @@ func (s *Stream) Insert(x string, count int) Element {
 	}
 
 	// replace the current minimum element
-	minKey := s.k.elts[0].Key
+	minElement := s.k.elts[0]
 
-	mkhash := reduce(sip13.Sum64Str(0, 0, minKey), len(s.alphas))
-	s.alphas[mkhash] = s.k.elts[0].Count
+	mkhash := reduce(metro.Hash64Str(minElement.Key, 0), len(s.alphas))
+	s.alphas[mkhash] = minElement.Count
 
 	e := Element{
 		Key:   x,
@@ -220,7 +223,7 @@ func (s *Stream) Insert(x string, count int) Element {
 	s.k.elts[0] = e
 
 	// we're not longer monitoring minKey
-	delete(s.k.m, minKey)
+	delete(s.k.m, minElement.Key)
 	// but 'x' is as array position 0
 	s.k.m[x] = 0
 
@@ -228,22 +231,102 @@ func (s *Stream) Insert(x string, count int) Element {
 	return e
 }
 
+// Merge ...
+func (s *Stream) Merge(other *Stream) error {
+	if s.n != other.n {
+		return fmt.Errorf("expected stream of size n %d, got %d", s.n, other.n)
+	}
+
+	// merge the elements
+	eKeys := make(map[string]struct{})
+	eMap := make(map[string]Element)
+	for _, e := range s.k.elts {
+		eKeys[e.Key] = struct{}{}
+	}
+	for _, e := range other.k.elts {
+		eKeys[e.Key] = struct{}{}
+	}
+
+	for k := range eKeys {
+		idx1, ok1 := s.k.m[k]
+		idx2, ok2 := other.k.m[k]
+		e1 := s.k.elts[idx1]
+		e2 := other.k.elts[idx2]
+		xhash := reduce(metro.Hash64Str(k, 0), len(s.alphas))
+		min1 := other.alphas[xhash]
+		min2 := other.alphas[xhash]
+
+		switch {
+		case ok1 && ok2:
+			eMap[k] = Element{
+				Key:   k,
+				Count: e1.Count + e2.Count,
+				Error: e1.Error + e2.Error,
+			}
+		case ok1:
+			eMap[k] = Element{
+				Key:   k,
+				Count: e1.Count + min2,
+				Error: e1.Error + min2,
+			}
+		case ok2:
+			eMap[k] = Element{
+				Key:   k,
+				Count: e2.Count + min1,
+				Error: e2.Error + min1,
+			}
+		}
+
+	}
+
+	// sort the elements
+	elts := make([]Element, 0, len(eMap))
+	for _, v := range eMap {
+		elts = append(elts, v)
+	}
+	sort.Sort(elementsByCountDescending(elts))
+
+	// trim elements
+	if len(elts) > s.n {
+		elts = elts[:s.n]
+	}
+
+	// create heap
+	tk := keys{
+		m:    make(map[string]int),
+		elts: make([]Element, 0, s.n),
+	}
+	for _, e := range elts {
+		heap.Push(&tk, e)
+	}
+
+	// modify alphas
+	for i, v := range other.alphas {
+		s.alphas[i] += v
+	}
+
+	// replace k
+	s.k = tk
+	return nil
+}
+
 // Keys returns the current estimates for the most frequent elements
 func (s *Stream) Keys() []Element {
 	elts := append([]Element(nil), s.k.elts...)
 	sort.Sort(elementsByCountDescending(elts))
-	return elts
+	return elts[:s.n]
 }
 
 // Estimate returns an estimate for the item x
 func (s *Stream) Estimate(x string) Element {
-	xhash := reduce(sip13.Sum64Str(0, 0, x), len(s.alphas))
+	xhash := reduce(metro.Hash64Str(x, 0), len(s.alphas))
 
 	// are we tracking this element?
 	if idx, ok := s.k.m[x]; ok {
 		e := s.k.elts[idx]
 		return e
 	}
+
 	count := s.alphas[xhash]
 	e := Element{
 		Key:   x,

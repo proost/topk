@@ -1,6 +1,8 @@
 topk: "filtered space saving" streaming topk algorithm
 
-Forked from http://github.com/dgryski/go-topk with the following changes
+A modified version of http://github.com/dgryski/go-topk with the following changes
 
 * [x] Add msgp encoding/decoding
-* [ ] Reduce memory comsumption
+* [x] Use metro hash
+* [x] Allow merging via https://ieeexplore.ieee.org/document/8438445
+* [x] Buffer extra 2*n for a better results

@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"reflect"
 	"sort"
@@ -58,7 +60,7 @@ func TestTopK(t *testing.T) {
 
 	var keys []string
 
-	for k, _ := range exact {
+	for k := range exact {
 		keys = append(keys, k)
 	}
 
@@ -120,5 +122,33 @@ func TestTopK(t *testing.T) {
 
 	if !reflect.DeepEqual(tk, decoded) {
 		t.Error("they are not equal.")
+	}
+}
+
+func TestTopKMerge(t *testing.T) {
+	tk1 := New(20)
+	tk2 := New(20)
+	mtk := New(20)
+
+	for i := 0; i <= 100; i++ {
+		x := rand.ExpFloat64() * 10
+		word := fmt.Sprintf("word-%d", int(x))
+		tk1.Insert(word, 1)
+		mtk.Insert(word, 1)
+	}
+
+	for i := 0; i <= 100; i++ {
+		x := rand.ExpFloat64() * 10
+		word := fmt.Sprintf("word-%d", int(x))
+		tk2.Insert(word, 1)
+		mtk.Insert(word, 1)
+	}
+
+	if err := tk1.Merge(tk2); err != nil {
+		t.Error(err)
+	}
+
+	if r1, r2 := tk1.Keys(), tk2.Keys(); reflect.DeepEqual(r1, r2) {
+		t.Errorf("%v != %v", r1, r2)
 	}
 }
