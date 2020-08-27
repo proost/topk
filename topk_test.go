@@ -130,14 +130,14 @@ func TestTopKMerge(t *testing.T) {
 	tk2 := New(20)
 	mtk := New(20)
 
-	for i := 0; i <= 100; i++ {
+	for i := 0; i <= 10000; i++ {
 		x := rand.ExpFloat64() * 10
 		word := fmt.Sprintf("word-%d", int(x))
 		tk1.Insert(word, 1)
 		mtk.Insert(word, 1)
 	}
 
-	for i := 0; i <= 100; i++ {
+	for i := 0; i <= 10000; i++ {
 		x := rand.ExpFloat64() * 10
 		word := fmt.Sprintf("word-%d", int(x))
 		tk2.Insert(word, 1)
