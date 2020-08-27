@@ -29,7 +29,7 @@ import (
 	"github.com/tinylib/msgp/msgp"
 )
 
-const bufMultiplier = 3 // keep track of extra 200% (tip of the iceberg)
+const bufMultiplier = 6 // keep track of extra 200% (tip of the iceberg)
 
 // Element is a TopK item
 type Element struct {
