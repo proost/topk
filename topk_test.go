@@ -3,13 +3,15 @@ package topk
 import (
 	"bufio"
 	"bytes"
-	"encoding/gob"
 	"fmt"
+	"io"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -106,23 +108,6 @@ func TestTopK(t *testing.T) {
 	if !reflect.DeepEqual(tk, decoded) {
 		t.Error("they are not equal.")
 	}
-
-	// gob
-	buf = bytes.NewBuffer(nil)
-	enc := gob.NewEncoder(buf)
-	if err := enc.Encode(tk); err != nil {
-		t.Error(err)
-	}
-
-	decoded = New(100)
-	dec := gob.NewDecoder(buf)
-	if err := dec.Decode(decoded); err != nil {
-		t.Error(err)
-	}
-
-	if !reflect.DeepEqual(tk, decoded) {
-		t.Error("they are not equal.")
-	}
 }
 
 func TestTopKMerge(t *testing.T) {
@@ -150,5 +135,266 @@ func TestTopKMerge(t *testing.T) {
 
 	if r1, r2 := tk1.Keys(), tk2.Keys(); reflect.DeepEqual(r1, r2) {
 		t.Errorf("%v != %v", r1, r2)
+	}
+}
+
+func loadWords() []string {
+	f, _ := os.Open("testdata/words.txt")
+	defer f.Close()
+	r := bufio.NewReader(f)
+
+	res := make([]string, 0, 1024)
+	for i := 0; ; i++ {
+		if l, err := r.ReadString('\n'); err != nil {
+			if err == io.EOF {
+				return res
+			}
+			panic(err)
+		} else {
+			l = strings.Trim(l, "\r\n ")
+			if len(l) > 0 {
+				res = append(res, l)
+			}
+		}
+	}
+}
+
+func exactCount(words []string) map[string]int {
+	m := make(map[string]int, len(words))
+	for _, w := range words {
+		if _, ok := m[w]; ok {
+			m[w]++
+		} else {
+			m[w] = 1
+		}
+	}
+
+	return m
+}
+
+func exactTop(m map[string]int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	sort.Slice(keys, func(a, b int) bool {
+		return m[keys[a]] > m[keys[b]]
+	})
+
+	return keys
+}
+
+// epsilon: count should be within exact*epsilon range
+// returns: probability that a sample in the sketch lies outside the error range (delta)
+func errorRate(epsilon float64, exact map[string]int, sketch map[string]Element) float64 {
+	var numOk, numBad int
+
+	for w, wc := range sketch {
+		exactwc := float64(exact[w])
+		lowerBound := int(math.Floor(exactwc * (1 - epsilon)))
+		upperBound := int(math.Ceil(exactwc * (1 + epsilon)))
+
+		if wc.Count-wc.Error < lowerBound || wc.Count-wc.Error > upperBound {
+			numBad++
+			fmt.Printf("!! %s: %d not in range [%d, %d], epsilon=%f\n", w, wc.Count-wc.Error, lowerBound, upperBound, epsilon)
+		} else {
+			numOk++
+		}
+	}
+
+	return float64(numBad) / float64(len(sketch))
+}
+
+func resultToMap(result []Element) map[string]Element {
+	res := make(map[string]Element, len(result))
+	for _, lhh := range result {
+		res[lhh.Key] = lhh
+	}
+
+	return res
+}
+
+func assertErrorRate(t *testing.T, exact map[string]int, result []Element, delta, epsilon float64) {
+	t.Helper() // Indicates to the testing framework that this is a helper func to skip in stack traces
+	sketch := resultToMap(result)
+	effectiveDelta := errorRate(epsilon, exact, sketch)
+	if effectiveDelta >= delta {
+		t.Errorf("Expected error rate <= %f. Found %f. Sketch size: %d", delta, effectiveDelta, len(sketch))
+	}
+}
+
+// split and array of strings into n slices
+func split(words []string, splits int) [][]string {
+	l := len(words)
+	step := l / splits
+
+	slices := make([][]string, 0, splits)
+	for i := 0; i < splits; i++ {
+		if i == splits-1 {
+			slices = append(slices, words[i*step:])
+		} else {
+			slices = append(slices, words[i*step:i*step+step])
+		}
+	}
+
+	sanityCheck := 0
+	for _, slice := range slices {
+		sanityCheck += len(slice)
+	}
+	if sanityCheck != l {
+		panic("Internal error")
+	}
+	if len(slices) != splits {
+		panic(fmt.Sprintf("Num splits mismatch %d/%d", len(slices), splits))
+	}
+
+	return slices
+}
+
+func TestSingle(t *testing.T) {
+	delta := 0.05
+	topK := 100
+
+	words := loadWords()
+
+	// Words in prime index positions are copied
+	for _, p := range []int{2, 3, 5, 7, 11, 13, 17, 23} {
+		for i := p; i < len(words); i += p {
+			words[i] = words[p]
+		}
+	}
+
+	sketch := New(topK)
+
+	for _, w := range words {
+		sketch.Insert(w, 1)
+	}
+
+	exact := exactCount(words)
+	top := exactTop(exact)
+
+	assertErrorRate(t, exact, sketch.Keys(), delta, 0.00001)
+	//assertErrorRate(t, exact, sketch.Result(1)[:topK], delta, epsilon) // We would LOVE this to pass!
+
+	// Assert order of heavy hitters in sub-sketch is as expected
+	// TODO: by way of construction of test set we have pandemonium after #8, would like to check top[:topk]
+	skTop := sketch.Keys()
+	for i, w := range top[:8] {
+		if w != skTop[i].Key && exact[w] != skTop[i].Count {
+			fmt.Println("key", w, exact[w])
+			t.Errorf("Expected top %d/%d to be '%s'(%d) found '%s'(%d)", i, topK, w, exact[w], skTop[i].Key, skTop[i].Count)
+		}
+	}
+}
+
+func TestTheShebang(t *testing.T) {
+	words := loadWords()
+
+	// Words in prime index positions are copied
+	for _, p := range []int{2, 3, 5, 7, 11, 13, 17, 23} {
+		for i := p; i < len(words); i += p {
+			words[i] = words[p]
+		}
+	}
+
+	cases := []struct {
+		name   string
+		slices [][]string
+		delta  float64
+		topk   int
+	}{
+		{
+			name:   "Single slice top20 d=0.01",
+			slices: split(words, 1),
+			delta:  0.01,
+			topk:   20,
+		},
+		{
+			name:   "Two slices top20 d=0.01",
+			slices: split(words, 2),
+			delta:  0.01,
+			topk:   20,
+		},
+		{
+			name:   "Three slices top20 d=0.01",
+			slices: split(words, 3),
+			delta:  0.01,
+			topk:   20,
+		},
+		{
+			name:   "100 slices top20 d=0.01",
+			slices: split(words, 100),
+			delta:  0.01,
+			topk:   20,
+		},
+	}
+
+	for _, cas := range cases {
+		t.Run(cas.name, func(t *testing.T) {
+			caseRunner(t, cas.slices, cas.topk, cas.delta)
+		})
+	}
+}
+
+func caseRunner(t *testing.T, slices [][]string, topk int, delta float64) {
+	var sketches []*Stream
+	var corpusSize int
+
+	// Find corpus size
+	for _, slice := range slices {
+		corpusSize += len(slice)
+	}
+
+	// Build sketches for each slice
+	for _, slice := range slices {
+		sk := New(topk)
+		for _, w := range slice {
+			sk.Insert(w, 1)
+		}
+		exact := exactCount(slice)
+		top := exactTop(exact)
+		skTop := sk.Keys()
+
+		assertErrorRate(t, exact, skTop, delta, 0.001)
+
+		// Assert order of heavy hitters in sub-sketch is as expected
+		// TODO: by way of construction of test set we have pandemonium after #8, would like to check top[:topk]
+		for i, w := range top[:8] {
+			if w != skTop[i].Key && exact[w] != skTop[i].Count {
+				t.Errorf("Expected top %d/%d to be '%s'(%d) found '%s'(%d)", i, topk, w, exact[w], skTop[i].Key, skTop[i].Count)
+			}
+		}
+
+		sketches = append(sketches, sk)
+	}
+
+	if len(slices) == 1 {
+		return
+	}
+
+	// Compute exact stats for entire corpus
+	var allSlice []string
+	for _, slice := range slices {
+		allSlice = append(allSlice, slice...)
+	}
+	exactAll := exactCount(allSlice)
+
+	// Merge all sketches
+	mainSketch := sketches[0]
+	for _, sk := range sketches[1:] {
+		mainSketch.Merge(sk)
+		// TODO: it would be nice to incrementally check the error rates
+	}
+	//assertErrorRate(t, exactAll, mainSketch.Keys(), delta, epsilon)
+
+	// Assert order of heavy hitters in final result is as expected
+	// TODO: by way of construction of test set we have pandemonium after #8, would like to check top[:topk]
+	top := exactTop(exactAll)
+	skTop := mainSketch.Keys()
+	for i, w := range top[:8] {
+		if w != skTop[i].Key {
+			t.Errorf("Expected top %d/%d to be '%s'(%d) found '%s'(%d)", i, topk, w, exactAll[w], skTop[i].Key, skTop[i].Count)
+		}
 	}
 }
