@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type freqs struct {
@@ -133,7 +135,7 @@ func TestTopKMerge(t *testing.T) {
 		t.Error(err)
 	}
 
-	if r1, r2 := tk1.Keys(), tk2.Keys(); reflect.DeepEqual(r1, r2) {
+	if r1, r2 := tk1.Keys(), mtk.Keys(); reflect.DeepEqual(r1, mtk) {
 		t.Errorf("%v != %v", r1, r2)
 	}
 }
@@ -397,4 +399,35 @@ func caseRunner(t *testing.T, slices [][]string, topk int, delta float64) {
 			t.Errorf("Expected top %d/%d to be '%s'(%d) found '%s'(%d)", i, topk, w, exactAll[w], skTop[i].Key, skTop[i].Count)
 		}
 	}
+}
+
+func TestMarshalUnMarshal(t *testing.T) {
+	topK := int(100)
+
+	words := loadWords()
+
+	// Words in prime index positions are copied
+	for _, p := range []int{2, 3, 5, 7, 11, 13, 17, 23} {
+		for i := p; i < len(words); i += p {
+			words[i] = words[p]
+		}
+	}
+
+	sketch := New(topK)
+
+	for _, w := range words {
+		sketch.Insert(w, 1)
+	}
+
+	b := bytes.NewBuffer(nil)
+	err := sketch.Encode(b)
+	assert.NoError(t, err)
+
+	fmt.Println(len(b.Bytes()))
+
+	tmp := &Stream{}
+	err = tmp.Decode(b)
+	assert.NoError(t, err)
+	assert.EqualValues(t, sketch, tmp)
+
 }

@@ -166,7 +166,7 @@ type Stream struct {
 func New(n int) *Stream {
 	return &Stream{
 		n:      n,
-		k:      keys{m: make(map[string]int), elts: make([]Element, 0, n*bufMultiplier)},
+		k:      keys{m: make(map[string]int, n*bufMultiplier), elts: make([]Element, 0, n*bufMultiplier)},
 		alphas: make([]int, n*bufMultiplier*6), // 6 is the multiplicative constant from the paper
 	}
 }
