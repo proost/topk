@@ -135,8 +135,12 @@ func TestTopKMerge(t *testing.T) {
 		t.Error(err)
 	}
 
-	if r1, r2 := tk1.Keys(), mtk.Keys(); reflect.DeepEqual(r1, mtk) {
-		t.Errorf("%v != %v", r1, r2)
+	r1, r2 := tk1.Keys(), mtk.Keys()
+	for i := range r1 {
+		fmt.Println(r1[i], r2[i])
+		if r1[i] != r2[i] {
+			t.Errorf("%v != %v", r1[i], r2[i])
+		}
 	}
 }
 
