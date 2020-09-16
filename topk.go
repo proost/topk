@@ -31,9 +31,9 @@ const bufMultiplier = 6 // keep track of extra 500% (tip of the iceberg)
 
 // Element is a TopK item
 type Element struct {
-	Key   string
-	Count int
-	Error int
+	Key   string `json:"key"`
+	Count int    `json:"count"`
+	Error int    `json:"error"`
 }
 
 type elementsByCountDescending []Element
