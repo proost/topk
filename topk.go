@@ -27,8 +27,6 @@ import (
 	"github.com/tinylib/msgp/msgp"
 )
 
-const bufMultiplier = 6 // keep track of extra 500% (tip of the iceberg)
-
 // Element is a TopK item
 type Element struct {
 	Key   string `json:"key"`
@@ -166,8 +164,8 @@ type Stream struct {
 func New(n int) *Stream {
 	return &Stream{
 		n:      n,
-		k:      keys{m: make(map[string]int, n*bufMultiplier), elts: make([]Element, 0, n*bufMultiplier)},
-		alphas: make([]int, n*bufMultiplier*6), // 6 is the multiplicative constant from the paper
+		k:      keys{m: make(map[string]int, n), elts: make([]Element, 0, n)},
+		alphas: make([]int, n*6), // 6 is the multiplicative constant from the paper
 	}
 }
 
@@ -190,7 +188,7 @@ func (s *Stream) Insert(x string, count int) Element {
 	}
 
 	// can we track more elements?
-	if len(s.k.elts) < s.n*bufMultiplier {
+	if len(s.k.elts) < s.n {
 		// there is free space
 		e := Element{Key: x, Count: count}
 		heap.Push(&s.k, e)
