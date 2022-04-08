@@ -247,7 +247,7 @@ func (s *Stream) Merge(other *Stream) error {
 		idx1, ok1 := s.k.m[k]
 		idx2, ok2 := other.k.m[k]
 		xhash := reduce(metro.Hash64Str(k, 0), len(s.alphas))
-		min1 := other.alphas[xhash]
+		min1 := s.alphas[xhash]
 		min2 := other.alphas[xhash]
 
 		switch {
