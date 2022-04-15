@@ -43,12 +43,14 @@ func TestTopK(t *testing.T) {
 
 	tk := New(100)
 	exact := make(map[string]int)
+	count := 0
 
 	for scanner.Scan() {
 
 		item := scanner.Text()
 
 		exact[item]++
+		count++
 		e := tk.Insert(item, 1)
 		if e.Count < exact[item] {
 			t.Errorf("estimate lower than exact: key=%v, exact=%v, estimate=%v", e.Key, exact[item], e.Count)
@@ -61,6 +63,8 @@ func TestTopK(t *testing.T) {
 	if err := scanner.Err(); err != nil {
 		log.Println("error during scan: ", err)
 	}
+
+	assert.Equal(t, count, tk.Count())
 
 	var keys []string
 
@@ -116,12 +120,14 @@ func TestTopKMerge(t *testing.T) {
 	tk1 := New(20)
 	tk2 := New(20)
 	mtk := New(20)
+	count := 0
 
 	for i := 0; i <= 10000; i++ {
 		x := rand.ExpFloat64() * 10
 		word := fmt.Sprintf("word-%d", int(x))
 		tk1.Insert(word, 1)
 		mtk.Insert(word, 1)
+		count++
 	}
 
 	for i := 0; i <= 10000; i++ {
@@ -129,6 +135,7 @@ func TestTopKMerge(t *testing.T) {
 		word := fmt.Sprintf("word-%d", int(x))
 		tk2.Insert(word, 1)
 		mtk.Insert(word, 1)
+		count++
 	}
 
 	if err := tk1.Merge(tk2); err != nil {
@@ -142,6 +149,7 @@ func TestTopKMerge(t *testing.T) {
 			t.Errorf("%v != %v", r1[i], r2[i])
 		}
 	}
+	assert.Equal(t, count, mtk.Count())
 }
 
 func loadWords() []string {
@@ -344,7 +352,7 @@ func TestTheShebang(t *testing.T) {
 }
 
 func caseRunner(t *testing.T, slices [][]string, topk int, delta float64) {
-	var sketches []*Stream
+	var sketches []*TopK
 	var corpusSize int
 
 	// Find corpus size
@@ -429,7 +437,7 @@ func TestMarshalUnMarshal(t *testing.T) {
 
 	fmt.Println(len(b.Bytes()))
 
-	tmp := &Stream{}
+	tmp := &TopK{}
 	err = tmp.Decode(b)
 	assert.NoError(t, err)
 	assert.EqualValues(t, sketch, tmp)

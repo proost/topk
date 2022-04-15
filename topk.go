@@ -161,7 +161,7 @@ type Stream struct {
 }
 
 // New returns a Stream estimating the top n most frequent elements
-func New(n int) *Stream {
+func newStream(n int) *Stream {
 	return &Stream{
 		n:      n,
 		k:      keys{m: make(map[string]int, n), elts: make([]Element, 0, n)},
@@ -394,4 +394,91 @@ func (s *Stream) Encode(w io.Writer) error {
 func (s *Stream) Decode(r io.Reader) error {
 	rdr := msgp.NewReader(r)
 	return s.DecodeMsgp(rdr)
+}
+
+const defaultScaleFactorM = 2
+
+// This is a simple wrapper around the Stream struct, more of a helper of sort
+type TopK struct {
+	c int // c keeps track of number of inserts
+	k int // actual k we are tracking
+	*Stream
+}
+
+func New(k int) *TopK {
+	return NewWithScaleFactor(k, defaultScaleFactorM)
+}
+
+func NewWithScaleFactor(k, m int) *TopK {
+	return &TopK{
+		k:      k,
+		Stream: newStream(k * m),
+	}
+}
+
+func (t *TopK) Insert(x string, count int) Element {
+	t.c += count
+	return t.Stream.Insert(x, count)
+}
+
+func (t *TopK) Merge(other *TopK) error {
+	if t.k != other.k {
+		return fmt.Errorf("cannot merge TopKs with different k values")
+	}
+	if err := t.Stream.Merge(other.Stream); err != nil {
+		return err
+	}
+	t.c += other.c
+	return nil
+}
+
+func (t *TopK) Keys() []Element {
+	res := t.Stream.Keys()
+	if len(res) > t.k {
+		return res[:t.k]
+	}
+	return res
+}
+
+// Returns number of items inserted into the TopK
+func (t *TopK) Count() int { return t.c }
+
+// EncodeMsgp ...
+func (t *TopK) EncodeMsgp(w *msgp.Writer) error {
+	if err := w.WriteInt(t.k); err != nil {
+		return err
+	}
+	if err := w.WriteInt(t.c); err != nil {
+		return err
+	}
+	return t.Stream.EncodeMsgp(w)
+}
+
+// DecodeMsgp ...
+func (t *TopK) DecodeMsgp(r *msgp.Reader) error {
+	var err error
+
+	if t.k, err = r.ReadInt(); err != nil {
+		return err
+	}
+	if t.c, err = r.ReadInt(); err != nil {
+		return err
+	}
+	t.Stream = &Stream{}
+
+	return t.Stream.DecodeMsgp(r)
+}
+
+// Encode ...
+func (t *TopK) Encode(w io.Writer) error {
+	wrt := msgp.NewWriter(w)
+	if err := t.EncodeMsgp(wrt); err != nil {
+		return err
+	}
+	return wrt.Flush()
+}
+
+// Decode ...
+func (t *TopK) Decode(r io.Reader) error {
+	return t.DecodeMsgp(msgp.NewReader(r))
 }
