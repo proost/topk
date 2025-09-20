@@ -153,6 +153,11 @@ func (tk *keys) Pop() interface{} {
 	return e
 }
 
+func (tk *keys) Clear() {
+	clear(tk.m)
+	tk.elts = tk.elts[:0]
+}
+
 // Stream calculates the TopK elements for a stream
 type Stream struct {
 	n      int
@@ -396,6 +401,16 @@ func (s *Stream) Decode(r io.Reader) error {
 	return s.DecodeMsgp(rdr)
 }
 
+// Clear resets the Stream to its initial empty state.
+// Clear does not change the size of the Stream.
+// Clear is not thread-safe, should not use it concurrently with other methods.
+func (s *Stream) Clear() {
+	s.k.Clear()
+	for i := range s.alphas {
+		s.alphas[i] = 0
+	}
+}
+
 const defaultScaleFactorM = 2
 
 // This is a simple wrapper around the Stream struct, more of a helper of sort
@@ -481,4 +496,12 @@ func (t *TopK) Encode(w io.Writer) error {
 // Decode ...
 func (t *TopK) Decode(r io.Reader) error {
 	return t.DecodeMsgp(msgp.NewReader(r))
+}
+
+// Clear resets the TopK to its initial empty state.
+// Clear preserves the initial k value.
+// Clear is not thread-safe, should not use it concurrently with other methods.
+func (t *TopK) Clear() {
+	t.c = 0
+	t.Stream.Clear()
 }
