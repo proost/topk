@@ -459,6 +459,7 @@ func TestTopKClear(t *testing.T) {
 	assert.Equal(t, 0, len(keys))
 	est := tk.Estimate("apple")
 	assert.Equal(t, 0, est.Count)
+	assert.Equal(t, 10, tk.k)
 }
 
 func TestStreamClear(t *testing.T) {
@@ -475,4 +476,5 @@ func TestStreamClear(t *testing.T) {
 
 	est := stream.Estimate("foo")
 	assert.Equal(t, 0, est.Count)
+	assert.Equal(t, 10, stream.n)
 }
