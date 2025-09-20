@@ -406,9 +406,7 @@ func (s *Stream) Decode(r io.Reader) error {
 // Clear is not thread-safe, should not use it concurrently with other methods.
 func (s *Stream) Clear() {
 	s.k.Clear()
-	for i := range s.alphas {
-		s.alphas[i] = 0
-	}
+	clear(s.alphas)
 }
 
 const defaultScaleFactorM = 2
