@@ -443,3 +443,38 @@ func TestMarshalUnMarshal(t *testing.T) {
 	assert.EqualValues(t, sketch, tmp)
 
 }
+
+func TestTopKClear(t *testing.T) {
+	tk := New(10)
+
+	tk.Insert("apple", 5)
+	tk.Insert("banana", 3)
+	tk.Insert("cherry", 7)
+	tk.Insert("date", 2)
+
+	tk.Clear()
+
+	assert.Equal(t, 0, tk.Count())
+	keys := tk.Keys()
+	assert.Equal(t, 0, len(keys))
+	est := tk.Estimate("apple")
+	assert.Equal(t, 0, est.Count)
+	assert.Equal(t, 10, tk.k)
+}
+
+func TestStreamClear(t *testing.T) {
+	stream := newStream(10)
+
+	stream.Insert("foo", 5)
+	stream.Insert("bar", 3)
+	stream.Insert("baz", 8)
+
+	stream.Clear()
+
+	keys := stream.Keys()
+	assert.Equal(t, 0, len(keys))
+
+	est := stream.Estimate("foo")
+	assert.Equal(t, 0, est.Count)
+	assert.Equal(t, 10, stream.n)
+}
